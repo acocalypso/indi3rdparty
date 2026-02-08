@@ -70,7 +70,8 @@ jobs:
             libopencv-dev \
             libzmq3-dev \
             libudev-dev \
-            zlib1g-dev
+            zlib1g-dev \
+            nlohmann-json3-dev
 
       - name: Run Build Script
         working-directory: indi-source
