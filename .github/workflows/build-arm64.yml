@@ -1,0 +1,86 @@
+name: Build ARM64 Debs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:trixie
+      options: --user root
+
+    steps:
+      - name: Install Git
+        run: |
+          apt-get update
+          apt-get install -y git
+
+      - name: Checkout Build Scripts (This Repo)
+        uses: actions/checkout@v4
+        with:
+          path: scripts_repo
+
+      - name: Clone Upstream INDI 3rd Party
+        run: |
+          git clone --depth 1 https://github.com/indilib/indi-3rdparty.git indi-source
+
+      - name: Prepare Build Directory
+        run: |
+          # Copy our build script into the extracted source root
+          cp scripts_repo/build_debs.sh indi-source/
+          chmod +x indi-source/build_debs.sh
+
+      - name: Setup Sources for Build Dependencies
+        run: |
+          # Enable deb-src for build-dep
+          sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources || sed -i '/^deb /p; s/^deb /deb-src /' /etc/apt/sources.list
+          apt-get update
+
+      - name: Install Build Dependencies
+        run: |
+          # Install basic tools
+          apt-get install -y build-essential cmake debhelper devscripts fakeroot pkg-config curl gnupg lsb-release dpkg-dev sudo
+          
+          # Install INDI Core dev (required for drivers)
+          # Note: If libindi-dev is not in Trixie, this will fail. 
+          # In that case, we would need to build indi-core from source or use a PPA.
+          apt-get install -y libindi-dev
+
+          # Install libraries commonly used by 3rd party drivers
+          apt-get install -y \
+            libcfitsio-dev \
+            libusb-1.0-0-dev \
+            libcurl4-gnutls-dev \
+            libgsl-dev \
+            libjpeg-dev \
+            libfftw3-dev \
+            zlib1g-dev \
+            libgps-dev \
+            libgphoto2-dev \
+            libnova-dev \
+            libftdi-dev \
+            libopencv-dev \
+            libraw-dev \
+            libboost-all-dev
+
+      - name: Run Build Script
+        working-directory: indi-source
+        run: ./build_debs.sh
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: indi-3rdparty-arm64-debs
+          path: indi-source/dist/*.deb
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: latest-build
+          name: Latest Build (Debian Trixie ARM64)
+          files: indi-source/dist/*.deb
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
