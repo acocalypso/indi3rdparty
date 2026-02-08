@@ -27,11 +27,11 @@ fi
 
 # Define libs first (dependency order matters)
 LIBS="libasi libapogee libartocad libbig5 libcdcl libdcdcam libdfish libdmk libdsi libeg libep libfli libflycapture libfocuslight libftdi libgen_tcp libgphoto libgreychen libguider libioptron libmallincam libplayerone libqhy libqsi librtk libsbig libsexasdome libshelyak libsidereal libsiril libskywatcher libstarvigil libsvb libswab libsynscan libtic libtoupcam libunifiedtelemetry libvaonis libvedet libzwo"
-#LIBS="libasi"
+# LIBS="libasi"
 
 # Find all indi-* drivers, excluding existing build dirs
-# DRIVERS=$(find . -maxdepth 1 -type d -name "indi-*" -not -path "./deb_*" -not -name "indi-3rdparty" | sed 's|./||' | sort)
-DRIVERS="indi-asi"
+DRIVERS=$(find . -maxdepth 1 -type d -name "indi-*" -not -path "./deb_*" -not -name "indi-3rdparty" | sed 's|./||' | sort)
+# DRIVERS="indi-asi"
 
 echo "========================================"
 echo "Starting Build Process"
