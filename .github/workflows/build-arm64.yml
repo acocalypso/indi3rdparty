@@ -21,9 +21,9 @@ jobs:
         with:
           path: scripts_repo
 
-      - name: Clone Upstream INDI 3rd Party
+      - name: Clone Upstream INDI 3rd Party (v2.1.7)
         run: |
-          git clone --depth 1 https://github.com/indilib/indi-3rdparty.git indi-source
+          git clone --depth 1 --branch v2.1.7 https://github.com/indilib/indi-3rdparty.git indi-source
 
       - name: Prepare Build Directory
         run: |
@@ -70,6 +70,7 @@ jobs:
             libopencv-dev \
             libzmq3-dev \
             libudev-dev \
+            liblimesuite-dev \
             zlib1g-dev \
             nlohmann-json3-dev
 
