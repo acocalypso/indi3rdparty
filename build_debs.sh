@@ -1,13 +1,15 @@
 #!/bin/bash
-set -e
+# Remove set -e so we continue even if some packages fail
+# set -e 
 
 # Configuration
-# Use current directory/repo/dist unless specified
 REPO_ROOT=$(pwd)
 REPO_DIR="${REPO_ROOT}/dist"
 DEBS_DIR="${REPO_ROOT}/all_debs"
 
 mkdir -p "$REPO_DIR" "$DEBS_DIR"
+
+FAILED_PACKAGES=""
 
 # Ensure we are in the root of the repo (where make_deb_pkgs usually is)
 if [ ! -f "./make_deb_pkgs" ]; then
@@ -24,7 +26,6 @@ if ! command -v dpkg-scanpackages &> /dev/null; then
 fi
 
 # Define libs first (dependency order matters)
-# User provided list
 LIBS="libasi libapogee libartocad libbig5 libcdcl libdcdcam libdfish libdmk libdsi libeg libep libfli libflycapture libfocuslight libftdi libgen_tcp libgphoto libgreychen libguider libioptron libmallincam libplayerone libqhy libqsi librtk libsbig libsexasdome libshelyak libsidereal libsiril libskywatcher libstarvigil libsvb libswab libsynscan libtic libtoupcam libunifiedtelemetry libvaonis libvedet libzwo"
 
 # Find all indi-* drivers, excluding existing build dirs
@@ -42,9 +43,17 @@ build_and_collect() {
     if [ -d "$target" ]; then
         echo ">>> Building $type: $target..."
         
-        # Run the build
-        # make_deb_pkgs creates a directory deb_$target and runs fakeroot inside
+        # Run the build, allow failure
+        set +e
         ./make_deb_pkgs "$target"
+        local build_status=$?
+        set -e
+        
+        if [ $build_status -ne 0 ]; then
+            echo "Error: Build failed for $target (Exit Code: $build_status)"
+            FAILED_PACKAGES="$FAILED_PACKAGES $target"
+            return
+        fi
         
         # Check if build succeeded and copy debs
         if [ -d "deb_$target" ]; then
@@ -60,13 +69,11 @@ build_and_collect() {
                 fi
             else
                 echo "Warning: No .deb files created for $target"
+                FAILED_PACKAGES="$FAILED_PACKAGES $target(no-debs)"
             fi
         else
              echo "Error: Build directory deb_$target was not created."
-             # We don't exit here to try building others, or use set -e to stop?
-             # User script had set -e but loop implies continuation. 
-             # Let's clean up and continue or fail? 
-             # Original script didn't handle failure explicitly other than set -e
+             FAILED_PACKAGES="$FAILED_PACKAGES $target(no-dir)"
         fi
     else
         echo "Warning: Directory $target not found."
@@ -85,12 +92,24 @@ done
 
 echo "========================================"
 echo "Copying all .deb to repository..."
-cp "$DEBS_DIR"/*.deb "$REPO_DIR/"
-echo "Total debs: $(ls -1 "$REPO_DIR"/*.deb | wc -l)"
+# Check if there are any debs to copy
+if ls "$DEBS_DIR"/*.deb 1> /dev/null 2>&1; then
+    cp "$DEBS_DIR"/*.deb "$REPO_DIR/"
+    echo "Total debs: $(ls -1 "$REPO_DIR"/*.deb | wc -l)"
 
-echo "Generating repo index..."
-cd "$REPO_DIR"
-dpkg-scanpackages . /dev/null | gzip -9c > Packages.gz
-# apt-ftparchive release . > Release  # Optional
+    echo "Generating repo index..."
+    cd "$REPO_DIR"
+    dpkg-scanpackages . /dev/null | gzip -9c > Packages.gz
+else
+    echo "No .deb files found to process."
+fi
 
-echo "Build Complete. Files are in $REPO_DIR"
+echo "========================================"
+echo "Build Complete with issues."
+if [ -n "$FAILED_PACKAGES" ]; then
+    echo "Failed Packages:"
+    echo "$FAILED_PACKAGES"
+else
+    echo "All packages built successfully."
+fi
+echo "Files are in $REPO_DIR"
