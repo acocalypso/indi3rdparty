@@ -40,7 +40,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           # Install basic tools
-          apt-get install -y build-essential cmake debhelper devscripts fakeroot pkg-config curl gnupg lsb-release dpkg-dev sudo
+          apt-get install -y build-essential cmake debhelper devscripts fakeroot pkg-config curl gnupg lsb-release dpkg-dev sudo cdbs
           
           # Install INDI Core dev (required for drivers)
           # Note: If libindi-dev is not in Trixie, this will fail. 
