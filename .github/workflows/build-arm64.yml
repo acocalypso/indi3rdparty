@@ -50,19 +50,27 @@ jobs:
           # Install libraries commonly used by 3rd party drivers
           apt-get install -y \
             libcfitsio-dev \
+            libnova-dev \
             libusb-1.0-0-dev \
             libcurl4-gnutls-dev \
             libgsl-dev \
             libjpeg-dev \
             libfftw3-dev \
-            zlib1g-dev \
+            libczmq-dev \
+            libftdi1-dev \
+            libavcodec-dev \
+            libavdevice-dev \
+            libavformat-dev \
+            libswscale-dev \
             libgps-dev \
-            libgphoto2-dev \
-            libnova-dev \
-            libftdi-dev \
-            libopencv-dev \
             libraw-dev \
-            libboost-all-dev
+            libdc1394-dev \
+            libgphoto2-dev \
+            libboost-all-dev \
+            libopencv-dev \
+            libzmq3-dev \
+            libudev-dev \
+            zlib1g-dev
 
       - name: Run Build Script
         working-directory: indi-source
