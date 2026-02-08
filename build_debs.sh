@@ -26,7 +26,7 @@ if ! command -v dpkg-scanpackages &> /dev/null; then
 fi
 
 # Define libs first (dependency order matters)
-LIBS="libasi libapogee libartocad libbig5 libcdcl libdcdcam libdfish libdmk libdsi libeg libep libfli libflycapture libfocuslight libftdi libgen_tcp libgphoto libgreychen libguider libioptron libmallincam libplayerone libqhy libqsi librtk libsbig libsexasdome libshelyak libsidereal libsiril libskywatcher libstarvigil libsvb libswab libsynscan libtic libtoupcam libunifiedtelemetry libvaonis libvedet libzwo"
+LIBS="libasi libapogee libartocad libbig5 libcdcl libdcdcam libdfish libdmk libdsi libeg libep libfli libflycapture libfocuslight libftdi libgen_tcp libgphoto libgreychen libguider libioptron libmallincam libplayerone libqhy libqsi librtk libsbig libsexasdome libshelyak libsidereal libsiril libskywatcher libstarvigil libsvbony libsvbonycam libswab libsynscan libtic libtoupcam libunifiedtelemetry libvaonis libvedet libzwo libaltaircam libastroasis libatik libbressercam libfishcamp libinovasdk libmeadecam libmicam libnncam libogmacam libomegonprocam libpigpiod libpktriggercord libricohcamerasdk libstarshootg libtscam"
 # LIBS="libasi"
 
 # Find all indi-* drivers, excluding existing build dirs
