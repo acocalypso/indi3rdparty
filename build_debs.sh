@@ -26,10 +26,12 @@ if ! command -v dpkg-scanpackages &> /dev/null; then
 fi
 
 # Define libs first (dependency order matters)
-LIBS="libasi libapogee libartocad libbig5 libcdcl libdcdcam libdfish libdmk libdsi libeg libep libfli libflycapture libfocuslight libftdi libgen_tcp libgphoto libgreychen libguider libioptron libmallincam libplayerone libqhy libqsi librtk libsbig libsexasdome libshelyak libsidereal libsiril libskywatcher libstarvigil libsvb libswab libsynscan libtic libtoupcam libunifiedtelemetry libvaonis libvedet libzwo"
+# LIBS="libasi libapogee libartocad libbig5 libcdcl libdcdcam libdfish libdmk libdsi libeg libep libfli libflycapture libfocuslight libftdi libgen_tcp libgphoto libgreychen libguider libioptron libmallincam libplayerone libqhy libqsi librtk libsbig libsexasdome libshelyak libsidereal libsiril libskywatcher libstarvigil libsvb libswab libsynscan libtic libtoupcam libunifiedtelemetry libvaonis libvedet libzwo"
+LIBS="libasi"
 
 # Find all indi-* drivers, excluding existing build dirs
-DRIVERS=$(find . -maxdepth 1 -type d -name "indi-*" -not -path "./deb_*" -not -name "indi-3rdparty" | sed 's|./||' | sort)
+# DRIVERS=$(find . -maxdepth 1 -type d -name "indi-*" -not -path "./deb_*" -not -name "indi-3rdparty" | sed 's|./||' | sort)
+DRIVERS="indi-asi"
 
 echo "========================================"
 echo "Starting Build Process"
@@ -55,25 +57,28 @@ build_and_collect() {
             return
         fi
         
-        # Check if build succeeded and copy debs
-        if [ -d "deb_$target" ]; then
-            count=$(find "deb_$target" -name "*.deb" | wc -l)
-            if [ "$count" -gt 0 ]; then
-                echo "    Found $count .deb files for $target"
-                cp "deb_$target"/*.deb "$DEBS_DIR/"
-                
-                # Install lib debs immediately so subsequent drivers can link against them
-                if [ "$type" == "Lib" ]; then
-                     echo "    Installing $target packages to satisfy dependencies..."
-                     dpkg -i "deb_$target"/*.deb || echo "Warning: Failed to install $target, subsequent builds might fail."
-                fi
-            else
-                echo "Warning: No .deb files created for $target"
-                FAILED_PACKAGES="$FAILED_PACKAGES $target(no-debs)"
+        # Check for .deb files in current dir (where make_deb_pkgs generates them)
+        if ls *.deb 1> /dev/null 2>&1; then
+            echo "    Found .deb files in root."
+            
+            # Install if needed (libs for dependencies)
+            if [ "$type" == "Lib" ]; then
+                 echo "    Installing generated debs..."
+                 dpkg -i *.deb || echo "Warning: Installation failed"
             fi
+            
+            # Move to collection dir
+            mv *.deb "$DEBS_DIR/"
+        elif [ -d "deb_$target" ] && ls "deb_$target"/*.deb 1> /dev/null 2>&1; then
+            # Fallback if they are inside deb_<target>
+            echo "    Found .deb files inside build dir."
+            if [ "$type" == "Lib" ]; then
+                dpkg -i "deb_$target"/*.deb
+            fi
+            mv "deb_$target"/*.deb "$DEBS_DIR/"
         else
-             echo "Error: Build directory deb_$target was not created."
-             FAILED_PACKAGES="$FAILED_PACKAGES $target(no-dir)"
+            echo "Warning: No .deb files found for $target"
+            FAILED_PACKAGES="$FAILED_PACKAGES $target(no-debs)"
         fi
     else
         echo "Warning: Directory $target not found."
