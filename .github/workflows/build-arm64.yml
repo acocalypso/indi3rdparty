@@ -67,6 +67,9 @@ jobs:
             libudev-dev \
             liblimesuite-dev \
             libhidapi-dev \
+            libev-dev \
+            libgtest-dev \
+            libgmock-dev \
             zlib1g-dev \
             nlohmann-json3-dev
 
