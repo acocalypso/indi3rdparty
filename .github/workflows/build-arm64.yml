@@ -40,12 +40,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           # Install basic tools
-          apt-get install -y build-essential cmake debhelper devscripts fakeroot pkg-config curl gnupg lsb-release dpkg-dev sudo cdbs
-          
-          # Install INDI Core dev (required for drivers)
-          # Note: If libindi-dev is not in Trixie, this will fail. 
-          # In that case, we would need to build indi-core from source or use a PPA.
-          apt-get install -y libindi-dev
+          apt-get install -y build-essential cmake debhelper devscripts fakeroot pkg-config curl gnupg lsb-release dpkg-dev sudo cdbs equivs
 
           # Install libraries commonly used by 3rd party drivers
           apt-get install -y \
@@ -74,6 +69,42 @@ jobs:
             libhidapi-dev \
             zlib1g-dev \
             nlohmann-json3-dev
+
+      - name: Build and install INDI Core (v2.1.7)
+        run: |
+          set -euo pipefail
+          
+          # 1. Build INDI Core from source
+          mkdir -p build/indi-core
+          git clone --depth 1 --branch v2.1.7 https://github.com/indilib/indi.git indi-core
+          
+          cmake -S indi-core -B build/indi-core \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINDI_BUILD_QT5_CLIENT=OFF \
+            -DINDI_BUILD_QT_CLIENT=OFF
+            
+          cmake --build build/indi-core --parallel "$(nproc)"
+          cmake --install build/indi-core
+          ldconfig
+
+          # 2. Create dummy libindi-dev package to satisfy build deps
+          mkdir -p /tmp/libindi-dev-equivs
+          cat > /tmp/libindi-dev-equivs/control <<'EOF'
+          Section: misc
+          Priority: optional
+          Standards-Version: 4.7.0
+          
+          Package: libindi-dev
+          Version: 2.1.7
+          Maintainer: GitHub Actions <actions@github.com>
+          Architecture: all
+          Description: Dummy libindi-dev package (CI)
+           Dummy package to satisfy Build-Depends when INDI is built from source.
+          EOF
+          
+          (cd /tmp/libindi-dev-equivs && equivs-build control)
+          dpkg -i /tmp/libindi-dev-equivs/libindi-dev_2.1.7_all.deb
 
       - name: Run Build Script
         working-directory: indi-source
