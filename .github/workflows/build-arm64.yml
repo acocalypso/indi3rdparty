@@ -21,9 +21,9 @@ jobs:
         with:
           path: scripts_repo
 
-      - name: Clone Upstream INDI 3rd Party (v2.1.7)
+      - name: Clone Upstream INDI 3rd Party (v2.1.9)
         run: |
-          git clone --depth 1 --branch v2.1.7 https://github.com/indilib/indi-3rdparty.git indi-source
+          git clone --depth 1 --branch v2.1.9 https://github.com/indilib/indi-3rdparty.git indi-source
 
       - name: Prepare Build Directory
         run: |
@@ -73,13 +73,13 @@ jobs:
             zlib1g-dev \
             nlohmann-json3-dev
 
-      - name: Build and install INDI Core (v2.1.7)
+      - name: Build and install INDI Core (v2.1.9)
         run: |
           set -euo pipefail
           
           # 1. Build INDI Core from source
           mkdir -p build/indi-core
-          git clone --depth 1 --branch v2.1.7 https://github.com/indilib/indi.git indi-core
+          git clone --depth 1 --branch v2.1.9 https://github.com/indilib/indi.git indi-core
           
           cmake -S indi-core -B build/indi-core \
             -DCMAKE_INSTALL_PREFIX=/usr \
@@ -99,7 +99,7 @@ jobs:
           Standards-Version: 4.7.0
           
           Package: libindi-dev
-          Version: 2.1.7
+          Version: 2.1.9
           Maintainer: GitHub Actions <actions@github.com>
           Architecture: all
           Description: Dummy libindi-dev package (CI)
@@ -107,7 +107,7 @@ jobs:
           EOF
           
           (cd /tmp/libindi-dev-equivs && equivs-build control)
-          dpkg -i /tmp/libindi-dev-equivs/libindi-dev_2.1.7_all.deb
+          dpkg -i /tmp/libindi-dev-equivs/libindi-dev_2.1.9_all.deb
 
       - name: Run Build Script
         working-directory: indi-source
