@@ -3,6 +3,10 @@ name: Build ARM64 Debs
 on:
   workflow_dispatch:
 
+env:
+  INDI_3RDPARTY_VERSION: 2.1.9
+  INDI_CORE_VERSION: 2.1.9
+
 jobs:
   build-arm64:
     runs-on: ubuntu-24.04-arm
@@ -21,9 +25,9 @@ jobs:
         with:
           path: scripts_repo
 
-      - name: Clone Upstream INDI 3rd Party (v2.1.9)
+      - name: Clone Upstream INDI 3rd Party (v${{ env.INDI_3RDPARTY_VERSION }})
         run: |
-          git clone --depth 1 --branch v2.1.9 https://github.com/indilib/indi-3rdparty.git indi-source
+          git clone --depth 1 --branch v${{ env.INDI_3RDPARTY_VERSION }} https://github.com/indilib/indi-3rdparty.git indi-source
 
       - name: Prepare Build Directory
         run: |
@@ -73,13 +77,13 @@ jobs:
             zlib1g-dev \
             nlohmann-json3-dev
 
-      - name: Build and install INDI Core (v2.1.9)
+      - name: Build and install INDI Core (v${{ env.INDI_CORE_VERSION }})
         run: |
           set -euo pipefail
           
           # 1. Build INDI Core from source
           mkdir -p build/indi-core
-          git clone --depth 1 --branch v2.1.9 https://github.com/indilib/indi.git indi-core
+          git clone --depth 1 --branch v${{ env.INDI_CORE_VERSION }} https://github.com/indilib/indi.git indi-core
           
           cmake -S indi-core -B build/indi-core \
             -DCMAKE_INSTALL_PREFIX=/usr \
@@ -99,7 +103,7 @@ jobs:
           Standards-Version: 4.7.0
           
           Package: libindi-dev
-          Version: 2.1.9
+          Version: ${{ env.INDI_CORE_VERSION }}
           Maintainer: GitHub Actions <actions@github.com>
           Architecture: all
           Description: Dummy libindi-dev package (CI)
@@ -107,7 +111,16 @@ jobs:
           EOF
           
           (cd /tmp/libindi-dev-equivs && equivs-build control)
-          dpkg -i /tmp/libindi-dev-equivs/libindi-dev_2.1.9_all.deb
+          dpkg -i /tmp/libindi-dev-equivs/libindi-dev_${{ env.INDI_CORE_VERSION }}_all.deb
+
+      - name: Determine release metadata
+        id: release_meta
+        run: |
+          set -euo pipefail
+          release_tag="indi3rdparty-v${{ env.INDI_3RDPARTY_VERSION }}-${GITHUB_RUN_NUMBER}"
+          release_name="INDI 3rdparty v${{ env.INDI_3RDPARTY_VERSION }} (Debian Trixie ARM64)"
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "name=$release_name" >> "$GITHUB_OUTPUT"
 
       - name: Run Build Script
         working-directory: indi-source
@@ -122,10 +135,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: latest-build
-          name: Latest Build (Debian Trixie ARM64)
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
           files: indi-source/dist/*.deb
           draft: false
-          prerelease: true
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
