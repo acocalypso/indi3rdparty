@@ -58,10 +58,6 @@ jobs:
             libczmq-dev \
             libftdi1-dev \
             libgpiod-dev \
-            libpigpiod-if-dev \
-            libpigpiod-if2-1 \
-            libpigpiod \
-            pigpio-tools \
             libavcodec-dev \
             libavdevice-dev \
             libavformat-dev \
@@ -81,6 +77,62 @@ jobs:
             libgmock-dev \
             zlib1g-dev \
             nlohmann-json3-dev
+
+      - name: Ensure pigpio headers are available
+        run: |
+          set -euo pipefail
+
+          apt-get update
+          apt-get install -y python3-setuptools python3-full wget
+
+          for pkg in libpigpiod-if-dev libpigpiod-if2-1 libpigpio-dev pigpio-tools libpigpiod libpigpio1; do
+            if apt-get install -y "$pkg"; then
+              echo "Installed optional package: $pkg"
+            else
+              echo "Optional package not available on this image: $pkg"
+            fi
+          done
+
+          has_if2_header=0
+          has_pigpio_header=0
+
+          if [ -f /usr/include/pigpiod_if2.h ] || [ -f /usr/local/include/pigpiod_if2.h ]; then
+            has_if2_header=1
+          fi
+
+          if [ -f /usr/include/pigpio.h ] || [ -f /usr/local/include/pigpio.h ]; then
+            has_pigpio_header=1
+          fi
+
+          if [ "$has_if2_header" -eq 1 ] && [ "$has_pigpio_header" -eq 1 ]; then
+            echo "pigpio headers already available from packages."
+            exit 0
+          fi
+
+          cd /tmp
+          wget -q https://github.com/joan2937/pigpio/archive/refs/tags/v79.tar.gz
+          tar zxf v79.tar.gz
+          cd pigpio-79
+          make
+          make install
+
+          for hdr in pigpio.h pigpiod_if2.h pigpiod_if.h; do
+            if [ -f "/usr/local/include/$hdr" ] && [ ! -f "/usr/include/$hdr" ]; then
+              cp "/usr/local/include/$hdr" /usr/include/
+            fi
+          done
+
+          ldconfig
+
+          if [ ! -f /usr/include/pigpiod_if2.h ] && [ ! -f /usr/local/include/pigpiod_if2.h ]; then
+            echo "pigpiod_if2.h is still missing after pigpio install" >&2
+            exit 1
+          fi
+
+          if [ ! -f /usr/include/pigpio.h ] && [ ! -f /usr/local/include/pigpio.h ]; then
+            echo "pigpio.h is still missing after pigpio install" >&2
+            exit 1
+          fi
 
       - name: Build and install INDI Core (v${{ env.INDI_CORE_VERSION }})
         run: |
