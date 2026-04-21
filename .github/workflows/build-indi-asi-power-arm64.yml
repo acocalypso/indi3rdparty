@@ -1,0 +1,179 @@
+name: Build indi-asi-power (ARM64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      indi_3rdparty_version:
+        description: INDI 3rdparty version tag (without leading v)
+        required: false
+        default: "2.1.9"
+      indi_core_version:
+        description: INDI core version tag (without leading v)
+        required: false
+        default: "2.1.9"
+
+jobs:
+  build-indi-asi-power:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:trixie
+      options: --user root
+
+    steps:
+      - name: Set build versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "INDI_3RDPARTY_VERSION=${{ github.event.inputs.indi_3rdparty_version || '2.1.9' }}" >> "$GITHUB_ENV"
+          echo "INDI_CORE_VERSION=${{ github.event.inputs.indi_core_version || '2.1.9' }}" >> "$GITHUB_ENV"
+
+      - name: Install build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y \
+            ca-certificates \
+            git \
+            build-essential \
+            cmake \
+            debhelper \
+            devscripts \
+            fakeroot \
+            pkg-config \
+            curl \
+            gnupg \
+            lsb-release \
+            dpkg-dev \
+            sudo \
+            cdbs \
+            equivs \
+            libcfitsio-dev \
+            libnova-dev \
+            libusb-1.0-0-dev \
+            libcurl4-gnutls-dev \
+            libgsl-dev \
+            libjpeg-dev \
+            libfftw3-dev \
+            libczmq-dev \
+            libftdi1-dev \
+            libgpiod-dev \
+            libpigpiod-if-dev \
+            libpigpiod-if2-1 \
+            libpigpiod \
+            pigpio-tools \
+            libavcodec-dev \
+            libavdevice-dev \
+            libavformat-dev \
+            libswscale-dev \
+            libgps-dev \
+            libraw-dev \
+            libdc1394-dev \
+            libgphoto2-dev \
+            libboost-all-dev \
+            libopencv-dev \
+            libzmq3-dev \
+            libudev-dev \
+            liblimesuite-dev \
+            libhidapi-dev \
+            libev-dev \
+            libgtest-dev \
+            libgmock-dev \
+            zlib1g-dev \
+            nlohmann-json3-dev
+
+      - name: Ensure pigpio headers are available
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f /usr/include/pigpiod_if2.h ] || [ -f /usr/local/include/pigpiod_if2.h ]; then
+            echo "pigpiod_if2.h already available."
+            exit 0
+          fi
+
+          apt-get update
+          apt-get install -y python3-setuptools python3-full wget
+
+          cd /tmp
+          wget -q https://github.com/joan2937/pigpio/archive/refs/tags/v79.tar.gz
+          tar zxf v79.tar.gz
+          cd pigpio-79
+          make
+          make install
+          ldconfig
+
+          if [ ! -f /usr/include/pigpiod_if2.h ] && [ ! -f /usr/local/include/pigpiod_if2.h ]; then
+            echo "pigpiod_if2.h is still missing after pigpio install" >&2
+            exit 1
+          fi
+
+      - name: Clone INDI 3rdparty source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "v${INDI_3RDPARTY_VERSION}" https://github.com/indilib/indi-3rdparty.git indi-source
+
+      - name: Build and install INDI core
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "v${INDI_CORE_VERSION}" https://github.com/indilib/indi.git indi-core
+          cmake -S indi-core -B build/indi-core \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DINDI_BUILD_QT5_CLIENT=OFF \
+            -DINDI_BUILD_QT_CLIENT=OFF
+          cmake --build build/indi-core --parallel "$(nproc)"
+          cmake --install build/indi-core
+          ldconfig
+
+          mkdir -p /tmp/libindi-dev-equivs
+          cat > /tmp/libindi-dev-equivs/control <<EOF
+          Section: misc
+          Priority: optional
+          Standards-Version: 4.7.0
+
+          Package: libindi-dev
+          Version: ${INDI_CORE_VERSION}
+          Maintainer: GitHub Actions <actions@github.com>
+          Architecture: all
+          Description: Dummy libindi-dev package (CI)
+           Dummy package to satisfy Build-Depends when INDI is built from source.
+          EOF
+
+          (cd /tmp/libindi-dev-equivs && equivs-build control)
+          dpkg -i "/tmp/libindi-dev-equivs/libindi-dev_${INDI_CORE_VERSION}_all.deb"
+
+      - name: Build indi-asi-power only
+        shell: bash
+        working-directory: indi-source
+        run: |
+          set -euo pipefail
+          chmod +x ./make_deb_pkgs
+          ./make_deb_pkgs indi-asi-power
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          mkdir -p artifacts
+          files=(indi-source/*.deb indi-source/deb_indi-asi-power/*.deb)
+
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No .deb artifacts were generated for indi-asi-power." >&2
+            exit 1
+          fi
+
+          cp "${files[@]}" artifacts/
+          ls -lah artifacts
+
+      - name: Upload indi-asi-power artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: indi-asi-power-arm64-debs
+          path: artifacts/*.deb
+          if-no-files-found: error

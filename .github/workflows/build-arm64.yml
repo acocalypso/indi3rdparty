@@ -58,6 +58,10 @@ jobs:
             libczmq-dev \
             libftdi1-dev \
             libgpiod-dev \
+            libpigpiod-if-dev \
+            libpigpiod-if2-1 \
+            libpigpiod \
+            pigpio-tools \
             libavcodec-dev \
             libavdevice-dev \
             libavformat-dev \
