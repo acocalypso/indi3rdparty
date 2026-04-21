@@ -57,10 +57,7 @@ jobs:
             libfftw3-dev \
             libczmq-dev \
             libftdi1-dev \
-            libpigpiod-if-dev \
-            libpigpiod-if2-1 \
-            libpigpiod \
-            pigpio-tools \
+            libgpiod-dev \
             libavcodec-dev \
             libavdevice-dev \
             libavformat-dev \
