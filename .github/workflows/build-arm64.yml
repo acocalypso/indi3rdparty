@@ -141,6 +141,11 @@ jobs:
           # 1. Build INDI Core from source
           mkdir -p build/indi-core
           git clone --depth 1 --branch v${{ env.INDI_CORE_VERSION }} https://github.com/indilib/indi.git indi-core
+
+          # Upstream may inject -Werror at target level; neutralize it for CI builds.
+          while IFS= read -r f; do
+            sed -i 's/-Werror\b/-Wno-error/g' "$f"
+          done < <(grep -RIl -- '-Werror' indi-core || true)
           
           cmake -S indi-core -B build/indi-core \
             -DCMAKE_INSTALL_PREFIX=/usr \
