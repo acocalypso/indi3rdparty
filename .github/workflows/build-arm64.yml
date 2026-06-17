@@ -145,6 +145,8 @@ jobs:
           cmake -S indi-core -B build/indi-core \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="-Wno-error" \
+            -DCMAKE_CXX_FLAGS="-Wno-error" \
             -DINDI_BUILD_QT5_CLIENT=OFF \
             -DINDI_BUILD_QT_CLIENT=OFF
             

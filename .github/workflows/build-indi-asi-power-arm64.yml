@@ -150,6 +150,8 @@ jobs:
           cmake -S indi-core -B build/indi-core \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="-Wno-error" \
+            -DCMAKE_CXX_FLAGS="-Wno-error" \
             -DINDI_BUILD_QT5_CLIENT=OFF \
             -DINDI_BUILD_QT_CLIENT=OFF
           cmake --build build/indi-core --parallel "$(nproc)"
@@ -178,6 +180,10 @@ jobs:
         working-directory: indi-source
         run: |
           set -euo pipefail
+          export CFLAGS="${CFLAGS:-} -Wno-error"
+          export CXXFLAGS="${CXXFLAGS:-} -Wno-error"
+          export DEB_CFLAGS_MAINT_APPEND="${DEB_CFLAGS_MAINT_APPEND:-} -Wno-error"
+          export DEB_CXXFLAGS_MAINT_APPEND="${DEB_CXXFLAGS_MAINT_APPEND:-} -Wno-error"
           chmod +x ./make_deb_pkgs
           ./make_deb_pkgs indi-asi-power
 

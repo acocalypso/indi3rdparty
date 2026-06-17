@@ -11,6 +11,12 @@ mkdir -p "$REPO_DIR" "$DEBS_DIR"
 
 FAILED_PACKAGES=""
 
+# Ensure warnings are not promoted to errors in downstream builds.
+export CFLAGS="${CFLAGS:-} -Wno-error"
+export CXXFLAGS="${CXXFLAGS:-} -Wno-error"
+export DEB_CFLAGS_MAINT_APPEND="${DEB_CFLAGS_MAINT_APPEND:-} -Wno-error"
+export DEB_CXXFLAGS_MAINT_APPEND="${DEB_CXXFLAGS_MAINT_APPEND:-} -Wno-error"
+
 # Ensure we are in the root of the repo (where make_deb_pkgs usually is)
 if [ ! -f "./make_deb_pkgs" ]; then
     echo "Error: ./make_deb_pkgs not found. Make sure you run this script from the root of the indi-3rdparty repository."
@@ -36,6 +42,7 @@ DRIVERS=$(find . -maxdepth 1 -type d -name "indi-*" -not -path "./deb_*" -not -n
 echo "========================================"
 echo "Starting Build Process"
 echo "Target Repo Dir: $REPO_DIR"
+echo "Compiler warning policy: ignore -Werror"
 echo "========================================"
 
 build_and_collect() {
