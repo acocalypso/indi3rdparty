@@ -143,9 +143,12 @@ jobs:
           git clone --depth 1 --branch v${{ env.INDI_CORE_VERSION }} https://github.com/indilib/indi.git indi-core
 
           # Upstream may inject -Werror at target level; neutralize it for CI builds.
-          while IFS= read -r f; do
-            sed -i 's/-Werror\b/-Wno-error/g' "$f"
-          done < <(grep -RIl -- '-Werror' indi-core || true)
+          files="$(grep -RIl -- '-Werror' indi-core || true)"
+          if [ -n "$files" ]; then
+            printf '%s\n' "$files" | while IFS= read -r f; do
+              [ -n "$f" ] && sed -i 's/-Werror/-Wno-error/g' "$f"
+            done
+          fi
           
           cmake -S indi-core -B build/indi-core \
             -DCMAKE_INSTALL_PREFIX=/usr \
