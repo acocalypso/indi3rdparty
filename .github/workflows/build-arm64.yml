@@ -31,22 +31,34 @@ jobs:
 
       - name: Prepare Build Directory
         run: |
-          # Copy our build script into the extracted source root
           cp scripts_repo/build_debs.sh indi-source/
           chmod +x indi-source/build_debs.sh
 
       - name: Setup Sources for Build Dependencies
         run: |
-          # Enable deb-src for build-dep
-          sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources || sed -i '/^deb /p; s/^deb /deb-src /' /etc/apt/sources.list
+          if ! sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources; then
+            sed -i '/^deb /p; s/^deb /deb-src /' /etc/apt/sources.list
+          fi
           apt-get update
 
       - name: Install Build Dependencies
         run: |
-          # Install basic tools
-          apt-get install -y build-essential cmake debhelper devscripts fakeroot pkg-config curl gnupg lsb-release dpkg-dev sudo cdbs equivs
+          apt-get install -y \
+            build-essential \
+            cmake \
+            debhelper \
+            devscripts \
+            fakeroot \
+            pkg-config \
+            curl \
+            gnupg \
+            lsb-release \
+            dpkg-dev \
+            sudo \
+            cdbs \
+            equivs \
+            python3
 
-          # Install libraries commonly used by 3rd party drivers
           apt-get install -y \
             libcfitsio-dev \
             libnova-dev \
@@ -137,19 +149,17 @@ jobs:
       - name: Build and install INDI Core (v${{ env.INDI_CORE_VERSION }})
         run: |
           set -euo pipefail
-          
-          # 1. Build INDI Core from source
+
           mkdir -p build/indi-core
           git clone --depth 1 --branch v${{ env.INDI_CORE_VERSION }} https://github.com/indilib/indi.git indi-core
 
-          # Upstream may inject -Werror at target level; neutralize it for CI builds.
           files="$(grep -RIl -- '-Werror' indi-core || true)"
           if [ -n "$files" ]; then
             printf '%s\n' "$files" | while IFS= read -r f; do
               [ -n "$f" ] && sed -i 's/-Werror/-Wno-error/g' "$f"
             done
           fi
-          
+
           cmake -S indi-core -B build/indi-core \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_BUILD_TYPE=Release \
@@ -157,18 +167,18 @@ jobs:
             -DCMAKE_CXX_FLAGS="-Wno-error" \
             -DINDI_BUILD_QT5_CLIENT=OFF \
             -DINDI_BUILD_QT_CLIENT=OFF
-            
+
           cmake --build build/indi-core --parallel "$(nproc)"
           cmake --install build/indi-core
           ldconfig
 
-          # 2. Create dummy libindi-dev package to satisfy build deps
           mkdir -p /tmp/libindi-dev-equivs
-          cat > /tmp/libindi-dev-equivs/control <<'EOF'
+
+          cat > /tmp/libindi-dev-equivs/control <<EOF
           Section: misc
           Priority: optional
           Standards-Version: 4.7.0
-          
+
           Package: libindi-dev
           Version: ${{ env.INDI_CORE_VERSION }}
           Maintainer: GitHub Actions <actions@github.com>
@@ -176,44 +186,159 @@ jobs:
           Description: Dummy libindi-dev package (CI)
            Dummy package to satisfy Build-Depends when INDI is built from source.
           EOF
-          
-          (cd /tmp/libindi-dev-equivs && equivs-build control)
-          dpkg -i /tmp/libindi-dev-equivs/libindi-dev_${{ env.INDI_CORE_VERSION }}_all.deb
+
+          cd /tmp/libindi-dev-equivs
+          equivs-build control
+          dpkg -i libindi-dev_${{ env.INDI_CORE_VERSION }}_all.deb
 
       - name: Determine release metadata
         id: release_meta
         run: |
           set -euo pipefail
+
           release_tag="indi3rdparty-v${{ env.INDI_3RDPARTY_VERSION }}-${GITHUB_RUN_NUMBER}"
-          release_name="INDI 3rdparty v${{ env.INDI_3RDPARTY_VERSION }} (Debian Trixie ARM64)"
+          release_name="INDI 3rdparty v${{ env.INDI_3RDPARTY_VERSION }} build ${GITHUB_RUN_NUMBER} Debian Trixie ARM64"
+
           echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "name=$release_name" >> "$GITHUB_OUTPUT"
 
       - name: Run Build Script
         working-directory: indi-source
-        run: ./build_debs.sh
+        run: |
+          set -euo pipefail
+          ./build_debs.sh
 
-      - name: Append run number to package filenames
+      - name: Append run number to Debian package metadata and filenames
         shell: bash
         run: |
           set -euo pipefail
+          shopt -s nullglob
 
-          for deb in indi-source/dist/*.deb; do
-            if [[ ! -e "$deb" ]]; then
-              echo "No .deb artifacts found in indi-source/dist" >&2
+          revision="${GITHUB_RUN_NUMBER}"
+
+          debs=(indi-source/dist/*.deb)
+          if (( ${#debs[@]} == 0 )); then
+            echo "No .deb artifacts found in indi-source/dist" >&2
+            exit 1
+          fi
+
+          work_root="$(mktemp -d)"
+          map_file="$(mktemp)"
+
+          echo "Collecting package version map..."
+
+          for deb in "${debs[@]}"; do
+            pkg="$(dpkg-deb -f "$deb" Package)"
+            old_ver="$(dpkg-deb -f "$deb" Version)"
+
+            if [[ -z "$pkg" || -z "$old_ver" ]]; then
+              echo "Could not read Package or Version from $deb" >&2
               exit 1
             fi
 
-            base="$(basename "$deb")"
-            dir="$(dirname "$deb")"
-            new="$(sed -E 's/^(.+)_([^_]+)_([^_]+)\.deb$/\1_\2-'"${GITHUB_RUN_NUMBER}"'_\3.deb/' <<< "$base")"
-
-            if [[ "$new" == "$base" ]]; then
-              echo "Skipping unexpected filename format: $base"
-              continue
+            if [[ "$old_ver" == *-* ]]; then
+              new_ver="${old_ver}+tns${revision}"
+            else
+              new_ver="${old_ver}-${revision}"
             fi
 
-            mv "$deb" "$dir/$new"
+            printf '%s\t%s\t%s\n' "$pkg" "$old_ver" "$new_ver" >> "$map_file"
+            echo "  $pkg: $old_ver -> $new_ver"
+          done
+
+          echo "Repacking packages with updated metadata..."
+
+          for deb in "${debs[@]}"; do
+            pkg="$(dpkg-deb -f "$deb" Package)"
+            arch="$(dpkg-deb -f "$deb" Architecture)"
+            old_ver="$(dpkg-deb -f "$deb" Version)"
+            new_ver="$(awk -F '\t' -v p="$pkg" '$1 == p { print $3; exit }' "$map_file")"
+
+            if [[ -z "$pkg" || -z "$arch" || -z "$old_ver" || -z "$new_ver" ]]; then
+              echo "Could not determine package metadata for $deb" >&2
+              exit 1
+            fi
+
+            work_dir="${work_root}/${pkg}"
+            rm -rf "$work_dir"
+            mkdir -p "$work_dir"
+
+            dpkg-deb -R "$deb" "$work_dir"
+
+            sed -i -E "s/^Version: .*/Version: ${new_ver}/" "$work_dir/DEBIAN/control"
+
+            python3 - "$work_dir/DEBIAN/control" "$map_file" <<'PY'
+            import re
+            import sys
+            from pathlib import Path
+
+            control_path = Path(sys.argv[1])
+            map_path = Path(sys.argv[2])
+
+            mappings = []
+            for line in map_path.read_text().splitlines():
+              pkg, old_ver, new_ver = line.split("\t")
+              mappings.append((pkg, old_ver, new_ver))
+
+            text = control_path.read_text()
+
+            for pkg, old_ver, new_ver in mappings:
+              pattern = re.compile(
+                rf"(\b{re.escape(pkg)}(?::[A-Za-z0-9-]+)?\s*\(\s*=\s*)"
+                rf"{re.escape(old_ver)}"
+                rf"(\s*\))"
+              )
+              text = pattern.sub(rf"\g<1>{new_ver}\g<2>", text)
+
+            control_path.write_text(text)
+            PY
+
+            new_deb="indi-source/dist/${pkg}_${new_ver}_${arch}.deb"
+
+            rm -f "$new_deb"
+            dpkg-deb --root-owner-group -b "$work_dir" "$new_deb"
+
+            rm -f "$deb"
+
+            echo "Created: $(basename "$new_deb")"
+            echo "  Internal version: $(dpkg-deb -f "$new_deb" Version)"
+          done
+
+          echo "Final package list:"
+          ls -lh indi-source/dist/*.deb
+
+      - name: Validate Debian package versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          debs=(indi-source/dist/*.deb)
+          if (( ${#debs[@]} == 0 )); then
+            echo "No .deb artifacts found in indi-source/dist" >&2
+            exit 1
+          fi
+
+          for deb in "${debs[@]}"; do
+            pkg="$(dpkg-deb -f "$deb" Package)"
+            ver="$(dpkg-deb -f "$deb" Version)"
+            arch="$(dpkg-deb -f "$deb" Architecture)"
+            expected="${pkg}_${ver}_${arch}.deb"
+
+            echo "$(basename "$deb") -> Package=$pkg Version=$ver Architecture=$arch"
+
+            if [[ "$(basename "$deb")" != "$expected" ]]; then
+              echo "Filename does not match internal metadata." >&2
+              echo "Expected: $expected" >&2
+              exit 1
+            fi
+
+            if [[ "$ver" != *"-${GITHUB_RUN_NUMBER}" && "$ver" != *"+tns${GITHUB_RUN_NUMBER}" ]]; then
+              echo "Version does not contain this GitHub run number." >&2
+              echo "Version: $ver" >&2
+              echo "Run number: ${GITHUB_RUN_NUMBER}" >&2
+              exit 1
+            fi
           done
 
       - name: Upload Build Artifacts
