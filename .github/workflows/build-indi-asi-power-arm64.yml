@@ -210,7 +210,18 @@ jobs:
             exit 1
           fi
 
-          cp "${files[@]}" artifacts/
+          for src in "${files[@]}"; do
+            base="$(basename "$src")"
+            renamed="$(sed -E 's/^(.+)_([^_]+)_([^_]+)\.deb$/\1_\2-'"${GITHUB_RUN_NUMBER}"'_\3.deb/' <<< "$base")"
+
+            if [[ "$renamed" == "$base" ]]; then
+              echo "Keeping original name (unexpected format): $base"
+              cp "$src" "artifacts/$base"
+            else
+              cp "$src" "artifacts/$renamed"
+            fi
+          done
+
           ls -lah artifacts
 
       - name: Upload indi-asi-power artifacts

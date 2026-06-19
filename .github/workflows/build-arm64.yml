@@ -193,6 +193,29 @@ jobs:
         working-directory: indi-source
         run: ./build_debs.sh
 
+      - name: Append run number to package filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for deb in indi-source/dist/*.deb; do
+            if [[ ! -e "$deb" ]]; then
+              echo "No .deb artifacts found in indi-source/dist" >&2
+              exit 1
+            fi
+
+            base="$(basename "$deb")"
+            dir="$(dirname "$deb")"
+            new="$(sed -E 's/^(.+)_([^_]+)_([^_]+)\.deb$/\1_\2-'"${GITHUB_RUN_NUMBER}"'_\3.deb/' <<< "$base")"
+
+            if [[ "$new" == "$base" ]]; then
+              echo "Skipping unexpected filename format: $base"
+              continue
+            fi
+
+            mv "$deb" "$dir/$new"
+          done
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
