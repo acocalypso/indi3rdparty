@@ -3,7 +3,11 @@ name: Build ARM64 Debs
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
+  DEBIAN_FRONTEND: noninteractive
   INDI_3RDPARTY_VERSION: 2.2.3.1
   INDI_CORE_VERSION: 2.2.3.1
 
@@ -14,35 +18,52 @@ jobs:
       image: debian:trixie
       options: --user root
 
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - name: Install Git
         run: |
+          set -euo pipefail
           apt-get update
-          apt-get install -y git
+          apt-get install -y git ca-certificates
 
-      - name: Checkout Build Scripts (This Repo)
+      - name: Checkout Build Scripts This Repo
         uses: actions/checkout@v4
         with:
           path: scripts_repo
 
-      - name: Clone Upstream INDI 3rd Party (v${{ env.INDI_3RDPARTY_VERSION }})
+      - name: Clone Upstream INDI 3rd Party
         run: |
-          git clone --depth 1 --branch v${{ env.INDI_3RDPARTY_VERSION }} https://github.com/indilib/indi-3rdparty.git indi-source
+          set -euo pipefail
+          git clone --depth 1 --branch "v${INDI_3RDPARTY_VERSION}" https://github.com/indilib/indi-3rdparty.git indi-source
 
       - name: Prepare Build Directory
         run: |
+          set -euo pipefail
           cp scripts_repo/build_debs.sh indi-source/
           chmod +x indi-source/build_debs.sh
 
       - name: Setup Sources for Build Dependencies
         run: |
-          if ! sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources; then
+          set -euo pipefail
+
+          if [[ -f /etc/apt/sources.list.d/debian.sources ]]; then
+            sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources
+          elif [[ -f /etc/apt/sources.list ]]; then
             sed -i '/^deb /p; s/^deb /deb-src /' /etc/apt/sources.list
+          else
+            echo "No apt sources file found." >&2
+            exit 1
           fi
+
           apt-get update
 
       - name: Install Build Dependencies
         run: |
+          set -euo pipefail
+
           apt-get install -y \
             build-essential \
             cmake \
@@ -57,7 +78,9 @@ jobs:
             sudo \
             cdbs \
             equivs \
-            python3
+            python3 \
+            perl \
+            wget
 
           apt-get install -y \
             libcfitsio-dev \
@@ -108,15 +131,15 @@ jobs:
           has_if2_header=0
           has_pigpio_header=0
 
-          if [ -f /usr/include/pigpiod_if2.h ] || [ -f /usr/local/include/pigpiod_if2.h ]; then
+          if [[ -f /usr/include/pigpiod_if2.h || -f /usr/local/include/pigpiod_if2.h ]]; then
             has_if2_header=1
           fi
 
-          if [ -f /usr/include/pigpio.h ] || [ -f /usr/local/include/pigpio.h ]; then
+          if [[ -f /usr/include/pigpio.h || -f /usr/local/include/pigpio.h ]]; then
             has_pigpio_header=1
           fi
 
-          if [ "$has_if2_header" -eq 1 ] && [ "$has_pigpio_header" -eq 1 ]; then
+          if [[ "$has_if2_header" -eq 1 && "$has_pigpio_header" -eq 1 ]]; then
             echo "pigpio headers already available from packages."
             exit 0
           fi
@@ -129,34 +152,34 @@ jobs:
           make install
 
           for hdr in pigpio.h pigpiod_if2.h pigpiod_if.h; do
-            if [ -f "/usr/local/include/$hdr" ] && [ ! -f "/usr/include/$hdr" ]; then
+            if [[ -f "/usr/local/include/$hdr" && ! -f "/usr/include/$hdr" ]]; then
               cp "/usr/local/include/$hdr" /usr/include/
             fi
           done
 
           ldconfig
 
-          if [ ! -f /usr/include/pigpiod_if2.h ] && [ ! -f /usr/local/include/pigpiod_if2.h ]; then
+          if [[ ! -f /usr/include/pigpiod_if2.h && ! -f /usr/local/include/pigpiod_if2.h ]]; then
             echo "pigpiod_if2.h is still missing after pigpio install" >&2
             exit 1
           fi
 
-          if [ ! -f /usr/include/pigpio.h ] && [ ! -f /usr/local/include/pigpio.h ]; then
+          if [[ ! -f /usr/include/pigpio.h && ! -f /usr/local/include/pigpio.h ]]; then
             echo "pigpio.h is still missing after pigpio install" >&2
             exit 1
           fi
 
-      - name: Build and install INDI Core (v${{ env.INDI_CORE_VERSION }})
+      - name: Build and install INDI Core
         run: |
           set -euo pipefail
 
           mkdir -p build/indi-core
-          git clone --depth 1 --branch v${{ env.INDI_CORE_VERSION }} https://github.com/indilib/indi.git indi-core
+          git clone --depth 1 --branch "v${INDI_CORE_VERSION}" https://github.com/indilib/indi.git indi-core
 
           files="$(grep -RIl -- '-Werror' indi-core || true)"
-          if [ -n "$files" ]; then
-            printf '%s\n' "$files" | while IFS= read -r f; do
-              [ -n "$f" ] && sed -i 's/-Werror/-Wno-error/g' "$f"
+          if [[ -n "$files" ]]; then
+            printf '%s\n' "$files" | while IFS= read -r file; do
+              [[ -n "$file" ]] && sed -i 's/-Werror/-Wno-error/g' "$file"
             done
           fi
 
@@ -180,24 +203,24 @@ jobs:
           Standards-Version: 4.7.0
 
           Package: libindi-dev
-          Version: ${{ env.INDI_CORE_VERSION }}
+          Version: ${INDI_CORE_VERSION}
           Maintainer: GitHub Actions <actions@github.com>
           Architecture: all
-          Description: Dummy libindi-dev package (CI)
+          Description: Dummy libindi-dev package CI
            Dummy package to satisfy Build-Depends when INDI is built from source.
           EOF
 
           cd /tmp/libindi-dev-equivs
           equivs-build control
-          dpkg -i libindi-dev_${{ env.INDI_CORE_VERSION }}_all.deb
+          dpkg -i "libindi-dev_${INDI_CORE_VERSION}_all.deb"
 
       - name: Determine release metadata
         id: release_meta
         run: |
           set -euo pipefail
 
-          release_tag="indi3rdparty-v${{ env.INDI_3RDPARTY_VERSION }}-${GITHUB_RUN_NUMBER}"
-          release_name="INDI 3rdparty v${{ env.INDI_3RDPARTY_VERSION }} build ${GITHUB_RUN_NUMBER} Debian Trixie ARM64"
+          release_tag="indi3rdparty-v${INDI_3RDPARTY_VERSION}-${GITHUB_RUN_NUMBER}"
+          release_name="INDI 3rdparty v${INDI_3RDPARTY_VERSION} build ${GITHUB_RUN_NUMBER} Debian Trixie ARM64"
 
           echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "name=$release_name" >> "$GITHUB_OUTPUT"
@@ -209,7 +232,6 @@ jobs:
           ./build_debs.sh
 
       - name: Append run number to Debian package metadata and filenames
-        shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -265,33 +287,20 @@ jobs:
 
             dpkg-deb -R "$deb" "$work_dir"
 
+            # Update this package's own Debian version.
             sed -i -E "s/^Version: .*/Version: ${new_ver}/" "$work_dir/DEBIAN/control"
 
-            python3 - "$work_dir/DEBIAN/control" "$map_file" <<'PY'
-            import re
-            import sys
-            from pathlib import Path
+            # Update exact internal dependencies between packages built in this run.
+            while IFS=$'\t' read -r dep_pkg dep_old dep_new; do
+              DEP_PKG="$dep_pkg" DEP_OLD="$dep_old" DEP_NEW="$dep_new" \
+              perl -0pi -e '
+                my $pkg = quotemeta($ENV{"DEP_PKG"});
+                my $old = quotemeta($ENV{"DEP_OLD"});
+                my $new = $ENV{"DEP_NEW"};
 
-            control_path = Path(sys.argv[1])
-            map_path = Path(sys.argv[2])
-
-            mappings = []
-            for line in map_path.read_text().splitlines():
-              pkg, old_ver, new_ver = line.split("\t")
-              mappings.append((pkg, old_ver, new_ver))
-
-            text = control_path.read_text()
-
-            for pkg, old_ver, new_ver in mappings:
-              pattern = re.compile(
-                rf"(\b{re.escape(pkg)}(?::[A-Za-z0-9-]+)?\s*\(\s*=\s*)"
-                rf"{re.escape(old_ver)}"
-                rf"(\s*\))"
-              )
-              text = pattern.sub(rf"\g<1>{new_ver}\g<2>", text)
-
-            control_path.write_text(text)
-            PY
+                s/(\b$pkg(?::[A-Za-z0-9-]+)?\s*\(\s*=\s*)$old(\s*\))/$1 . $new . $2/ge;
+              ' "$work_dir/DEBIAN/control"
+            done < "$map_file"
 
             new_deb="indi-source/dist/${pkg}_${new_ver}_${arch}.deb"
 
@@ -308,7 +317,6 @@ jobs:
           ls -lh indi-source/dist/*.deb
 
       - name: Validate Debian package versions
-        shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
