@@ -71,7 +71,9 @@ build_and_collect() {
             # Install if needed (libs for dependencies)
             if [ "$type" == "Lib" ]; then
                  echo "    Installing generated debs..."
-                 dpkg -i *.deb || echo "Warning: Installation failed"
+                 local packages=(./*.deb)
+                 apt-get install -y --no-install-recommends "${packages[@]}" || \
+                     echo "Warning: Installation failed"
             fi
             
             # Move to collection dir
@@ -80,7 +82,9 @@ build_and_collect() {
             # Fallback if they are inside deb_<target>
             echo "    Found .deb files inside build dir."
             if [ "$type" == "Lib" ]; then
-                dpkg -i "deb_$target"/*.deb
+                local packages=("deb_$target"/*.deb)
+                apt-get install -y --no-install-recommends "${packages[@]}" || \
+                    echo "Warning: Installation failed"
             fi
             mv "deb_$target"/*.deb "$DEBS_DIR/"
         else

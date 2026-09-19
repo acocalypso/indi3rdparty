@@ -94,6 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x scripts_repo/.github/scripts/*.sh
+          scripts_repo/.github/scripts/test-patch-upstream-debian-metadata.sh
           scripts_repo/.github/scripts/test-debian-package-helpers.sh
 
       - name: Ensure pigpio headers are available
@@ -158,6 +159,7 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 --branch "v${INDI_3RDPARTY_VERSION}" https://github.com/indilib/indi-3rdparty.git indi-source
+          scripts_repo/.github/scripts/patch-upstream-debian-metadata.sh indi-source
 
       - name: Build and install INDI core
         shell: bash
