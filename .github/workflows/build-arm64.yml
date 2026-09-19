@@ -203,7 +203,7 @@ jobs:
           rm -rf "$INDI_CORE_STAGE"
           mkdir -p "$INDI_CORE_STAGE"
           DESTDIR="$INDI_CORE_STAGE" cmake --install build/indi-core
-          cp -a "$INDI_CORE_STAGE/." /
+          cmake --install build/indi-core
           ldconfig
 
           mkdir -p /tmp/libindi-dev-equivs
