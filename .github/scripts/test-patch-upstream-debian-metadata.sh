@@ -11,7 +11,8 @@ mkdir -p \
   "$fixture/debian/libqsi" \
   "$fixture/debian/indi-nightscape" \
   "$fixture/debian/indi-asi-power" \
-  "$fixture/debian/indi-rpi-gpio"
+  "$fixture/debian/indi-rpi-gpio" \
+  "$fixture/debian/indi-avalonud"
 
 cat > "$fixture/debian/libfli/libflipro2.install" <<'EOF'
 usr/lib/*/libflipro.so.2*
@@ -36,6 +37,17 @@ Depends: ${shlibs:Depends}, ${misc:Depends}, libftdi1
 Description: FTDI test package
 EOF
 done
+
+
+cat > "$fixture/debian/indi-avalonud/control" <<'EOF'
+Package: indi-avalonud
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Avalon Unified runtime
+
+Package: indi-avalonud-dbg
+Depends: indi-avalon (= ${binary:Version}), ${misc:Depends}
+Description: Avalon Unified debug package
+EOF
 
 for control in indi-asi-power indi-rpi-gpio; do
   cat > "$fixture/debian/$control/control" <<'EOF'
@@ -66,6 +78,12 @@ if grep -R -E '^Depends:.*(, libftdi1|, libpigpiod-if2-1|, libpigpiod)(,|$)' \
   "$fixture/debian/indi-asi-power/control" \
   "$fixture/debian/indi-rpi-gpio/control"; then
   echo "An obsolete Trixie dependency remains" >&2
+  exit 1
+fi
+
+if ! grep -Fq 'Depends: indi-avalonud (= ${binary:Version}), ${misc:Depends}' \
+  "$fixture/debian/indi-avalonud/control"; then
+  echo "indi-avalonud debug dependency was not corrected" >&2
   exit 1
 fi
 

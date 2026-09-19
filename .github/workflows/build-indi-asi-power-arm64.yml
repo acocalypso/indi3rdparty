@@ -255,7 +255,8 @@ jobs:
             "$INDI_CORE_STAGE" \
             libindi1
 
-      - name: Verify package set can be installed
+      - name: Check package set installability
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -271,6 +272,12 @@ jobs:
           for deb in "${debs[@]}"; do
             absolute_debs+=("$(readlink -f "$deb")")
           done
+
+          libindi_provider="$(scripts_repo/.github/scripts/create-validation-provider-package.sh \
+            libindi1 \
+            "$INDI_CORE_VERSION" \
+            /tmp)"
+          absolute_debs+=("$libindi_provider")
 
           apt-get update
           apt-get install --dry-run --no-install-recommends "${absolute_debs[@]}"

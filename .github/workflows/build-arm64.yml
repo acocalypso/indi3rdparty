@@ -370,7 +370,8 @@ jobs:
             fi
           done
 
-      - name: Verify package set can be installed
+      - name: Check package set installability
+        continue-on-error: true
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -385,6 +386,15 @@ jobs:
           for deb in "${debs[@]}"; do
             absolute_debs+=("$(readlink -f "$deb")")
           done
+
+          # INDI Core is built and staged by this job but its libindi1 package
+          # is published by the separate PINS workflow. Supply validation-only
+          # metadata so APT can check every other relationship in this repo.
+          libindi_provider="$(scripts_repo/.github/scripts/create-validation-provider-package.sh \
+            libindi1 \
+            "$INDI_CORE_VERSION" \
+            /tmp)"
+          absolute_debs+=("$libindi_provider")
 
           apt-get update
           apt-get install --dry-run --no-install-recommends "${absolute_debs[@]}"

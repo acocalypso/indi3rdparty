@@ -45,4 +45,11 @@ for control in \
   fi
 done
 
+# The legacy debug package points to the similarly named indi-avalon package
+# instead of the runtime produced from its own source package.
+if [[ -f "$debian_root/indi-avalonud/control" ]]; then
+  sed -i '/^Package: indi-avalonud-dbg$/,/^Description:/ s/^Depends: indi-avalon (/Depends: indi-avalonud (/' \
+    "$debian_root/indi-avalonud/control"
+fi
+
 echo "Applied Debian Trixie metadata compatibility fixes."
