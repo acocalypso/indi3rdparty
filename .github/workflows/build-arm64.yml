@@ -10,6 +10,7 @@ env:
   DEBIAN_FRONTEND: noninteractive
   INDI_3RDPARTY_VERSION: 2.2.3.1
   INDI_CORE_VERSION: 2.2.3.1
+  INDI_CORE_STAGE: /tmp/indi-core-stage
 
 jobs:
   build-arm64:
@@ -44,6 +45,7 @@ jobs:
           set -euo pipefail
           cp scripts_repo/build_debs.sh indi-source/
           chmod +x indi-source/build_debs.sh
+          chmod +x scripts_repo/.github/scripts/*.sh
 
       - name: Setup Sources for Build Dependencies
         run: |
@@ -65,6 +67,7 @@ jobs:
           set -euo pipefail
 
           apt-get install -y \
+            binutils \
             build-essential \
             cmake \
             debhelper \
@@ -112,6 +115,11 @@ jobs:
             libgmock-dev \
             zlib1g-dev \
             nlohmann-json3-dev
+
+      - name: Test Debian package dependency helpers
+        run: |
+          set -euo pipefail
+          scripts_repo/.github/scripts/test-debian-package-helpers.sh
 
       - name: Ensure pigpio headers are available
         run: |
@@ -192,7 +200,10 @@ jobs:
             -DINDI_BUILD_QT_CLIENT=OFF
 
           cmake --build build/indi-core --parallel "$(nproc)"
-          cmake --install build/indi-core
+          rm -rf "$INDI_CORE_STAGE"
+          mkdir -p "$INDI_CORE_STAGE"
+          DESTDIR="$INDI_CORE_STAGE" cmake --install build/indi-core
+          cp -a "$INDI_CORE_STAGE/." /
           ldconfig
 
           mkdir -p /tmp/libindi-dev-equivs
@@ -230,6 +241,14 @@ jobs:
         run: |
           set -euo pipefail
           ./build_debs.sh
+
+      - name: Generate and validate runtime dependencies
+        run: |
+          set -euo pipefail
+          scripts_repo/.github/scripts/finalize-debian-packages.sh \
+            indi-source/dist \
+            "$INDI_CORE_STAGE" \
+            libindi1
 
       - name: Append run number to Debian package metadata and filenames
         run: |
@@ -348,6 +367,25 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Verify package set can be installed
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          debs=(indi-source/dist/*.deb)
+          if (( ${#debs[@]} == 0 )); then
+            echo "No .deb artifacts found in indi-source/dist" >&2
+            exit 1
+          fi
+
+          absolute_debs=()
+          for deb in "${debs[@]}"; do
+            absolute_debs+=("$(readlink -f "$deb")")
+          done
+
+          apt-get update
+          apt-get install --dry-run --no-install-recommends "${absolute_debs[@]}"
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4

@@ -12,6 +12,10 @@ on:
         required: false
         default: "2.1.9"
 
+env:
+  DEBIAN_FRONTEND: noninteractive
+  INDI_CORE_STAGE: /tmp/indi-core-stage
+
 jobs:
   build-indi-asi-power:
     runs-on: ubuntu-24.04-arm
@@ -34,6 +38,7 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y \
+            binutils \
             ca-certificates \
             git \
             build-essential \
@@ -78,6 +83,18 @@ jobs:
             libgmock-dev \
             zlib1g-dev \
             nlohmann-json3-dev
+
+      - name: Checkout dependency helpers
+        uses: actions/checkout@v4
+        with:
+          path: scripts_repo
+
+      - name: Test Debian package dependency helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts_repo/.github/scripts/*.sh
+          scripts_repo/.github/scripts/test-debian-package-helpers.sh
 
       - name: Ensure pigpio headers are available
         shell: bash
@@ -164,7 +181,10 @@ jobs:
             -DINDI_BUILD_QT5_CLIENT=OFF \
             -DINDI_BUILD_QT_CLIENT=OFF
           cmake --build build/indi-core --parallel "$(nproc)"
-          cmake --install build/indi-core
+          rm -rf "$INDI_CORE_STAGE"
+          mkdir -p "$INDI_CORE_STAGE"
+          DESTDIR="$INDI_CORE_STAGE" cmake --install build/indi-core
+          cp -a "$INDI_CORE_STAGE/." /
           ldconfig
 
           mkdir -p /tmp/libindi-dev-equivs
@@ -223,6 +243,35 @@ jobs:
           done
 
           ls -lah artifacts
+
+      - name: Generate and validate runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts_repo/.github/scripts/finalize-debian-packages.sh \
+            artifacts \
+            "$INDI_CORE_STAGE" \
+            libindi1
+
+      - name: Verify package set can be installed
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          debs=(artifacts/*.deb)
+          if (( ${#debs[@]} == 0 )); then
+            echo "No .deb artifacts found in artifacts" >&2
+            exit 1
+          fi
+
+          absolute_debs=()
+          for deb in "${debs[@]}"; do
+            absolute_debs+=("$(readlink -f "$deb")")
+          done
+
+          apt-get update
+          apt-get install --dry-run --no-install-recommends "${absolute_debs[@]}"
 
       - name: Upload indi-asi-power artifacts
         uses: actions/upload-artifact@v4
