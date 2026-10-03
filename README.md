@@ -24,22 +24,32 @@ The workflow produces:
 
 The build logic is encapsulated in `build_debs.sh`. It:
 1.  Installs necessary build dependencies.
-2.  Iterates through a discovered `lib*` library directories.
+2.  Iterates through discovered `lib*` library directories.
 3.  Iterates through all `indi-*` drivers.
 4.  Uses `make_deb_pkgs` to build each package.
 5.  Collects artifacts into a repository structure.
 6.  Generates `Packages.gz` for apt consumption.
 
-## Versions and partial builds
+## Versions and build validation
 
 Both workflows default to upstream INDI core and 3rdparty v2.2.5. The single
 `indi-asi-power` workflow also accepts explicit version overrides.
 
-The full build continues after individual package failures. A green run can
-therefore contain a partial package set. Check the Actions summary and the
-`indi-3rdparty-build-report` artifact for omissions. Directories without upstream
-Debian rules are skipped explicitly. Libraries requiring external SDKs may still
-need additional prerequisites.
+The full build collects failures in its Actions summary and the
+`indi-3rdparty-build-report` artifact, then exits unsuccessfully if any supported
+package fails to build, produces no packages, or cannot install its libraries.
+The installability check also blocks publication on failure.
+
+AHP XC 1.4.7, BNO08x and rpicam-apps 1.8.1 sources are pinned by commit in
+`.github/scripts/prepare-source-dependencies.sh` and packaged alongside the
+INDI drivers. rpicam-apps builds against Debian's libcamera with Raspberry
+Pi-specific extensions disabled. Toupcam builds before MeadeCam, whose SDK
+depends on it.
+
+Ricoh's bundled proprietary SDK supports amd64 and armhf only. It is explicitly
+excluded from ARM64 builds; the ARM64 Pentax driver builds without it upstream.
+Directories without upstream Debian packaging are also listed as exclusions.
+Check the build report for the exact supported package set.
 
 ## Usage
 

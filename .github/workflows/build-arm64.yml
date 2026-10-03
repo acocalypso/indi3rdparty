@@ -124,11 +124,20 @@ jobs:
             libaravis-dev \
             libcamera-dev \
             libnutclient-dev \
-            libmosquitto-dev
+            libmosquitto-dev \
+            meson \
+            ninja-build \
+            doxygen \
+            libexif-dev \
+            libpng-dev
+
+      - name: Prepare pinned SDK and camera library sources
+        run: scripts_repo/.github/scripts/prepare-source-dependencies.sh indi-source
 
       - name: Test Debian package dependency helpers
         run: |
           set -euo pipefail
+          scripts_repo/.github/scripts/test-build-debs.sh
           scripts_repo/.github/scripts/test-patch-upstream-debian-metadata.sh
           scripts_repo/.github/scripts/test-debian-package-helpers.sh
 
@@ -388,7 +397,6 @@ jobs:
           done
 
       - name: Check package set installability
-        continue-on-error: true
         run: |
           set -euo pipefail
           shopt -s nullglob

@@ -1,154 +1,98 @@
-#!/bin/bash
-# Remove set -e so we continue even if some packages fail
-# set -e 
+#!/usr/bin/env bash
+set -euo pipefail
+shopt -s nullglob
 
-# Configuration
 REPO_ROOT=$(pwd)
-REPO_DIR="${REPO_ROOT}/dist"
-DEBS_DIR="${REPO_ROOT}/all_debs"
-
-mkdir -p "$REPO_DIR" "$DEBS_DIR"
-
+REPO_DIR="$REPO_ROOT/dist"
+DEBS_DIR="$REPO_ROOT/all_debs"
 FAILED_PACKAGES=""
 BUILT_PACKAGES=""
 SKIPPED_PACKAGES=""
+DEB_ARCH=$(dpkg --print-architecture)
+mkdir -p "$REPO_DIR" "$DEBS_DIR"
 
-# Ensure warnings are not promoted to errors in downstream builds.
 export CFLAGS="${CFLAGS:-} -Wno-error"
 export CXXFLAGS="${CXXFLAGS:-} -Wno-error"
 export DEB_CFLAGS_MAINT_APPEND="${DEB_CFLAGS_MAINT_APPEND:-} -Wno-error"
 export DEB_CXXFLAGS_MAINT_APPEND="${DEB_CXXFLAGS_MAINT_APPEND:-} -Wno-error"
 
-# Ensure we are in the root of the repo (where make_deb_pkgs usually is)
-if [ ! -f "./make_deb_pkgs" ]; then
-    echo "Error: ./make_deb_pkgs not found. Make sure you run this script from the root of the indi-3rdparty repository."
-    exit 1
-fi
-
+[[ -f ./make_deb_pkgs ]] || { echo "Run from the INDI 3rdparty source root." >&2; exit 1; }
 chmod +x ./make_deb_pkgs
+command -v dpkg-scanpackages >/dev/null || { echo "dpkg-dev is required." >&2; exit 1; }
 
-# Install basic build requirements if missing (checks for debuild/rules)
-if ! command -v dpkg-scanpackages &> /dev/null; then
-    echo "Installing missing tools..."
-    apt-get update && apt-get install -y dpkg-dev
-fi
+# Imported MeadeCam SDK depends on Toupcam. Install it before dependent SDKs.
+LIBS=$(find . -maxdepth 1 -type d -name 'lib*' ! -name libtoupcam | sed 's|./||' | sort)
+if [[ -d libtoupcam ]]; then LIBS="libtoupcam $LIBS"; fi
+DRIVERS=$(find . -maxdepth 1 -type d -name 'indi-*' ! -name indi-3rdparty | sed 's|./||' | sort)
 
-# Define libs first (dependency order matters)
-LIBS=$(find . -maxdepth 1 -type d -name 'lib*' | sed 's|./||' | sort)
-# LIBS="libasi"
-
-# Find all indi-* drivers, excluding existing build dirs
-DRIVERS=$(find . -maxdepth 1 -type d -name "indi-*" -not -path "./deb_*" -not -name "indi-3rdparty" | sed 's|./||' | sort)
-# DRIVERS="indi-asi"
-
-echo "========================================"
-echo "Starting Build Process"
-echo "Target Repo Dir: $REPO_DIR"
-echo "Compiler warning policy: ignore -Werror"
-echo "========================================"
-
-build_and_collect() {
-    local target=$1
-    local type=$2
-    
-    if [ ! -f "debian/$target/rules" ]; then
-        echo "Skipping $target: upstream does not provide Debian packaging."
-        SKIPPED_PACKAGES="$SKIPPED_PACKAGES $target"
-        return
-    fi
-
-    if [ -d "$target" ]; then
-        echo ">>> Building $type: $target..."
-        
-        # Run the build, allow failure
-        set +e
-        ./make_deb_pkgs "$target"
-        local build_status=$?
-        set -e
-        
-        if [ $build_status -ne 0 ]; then
-            echo "Error: Build failed for $target (Exit Code: $build_status)"
-            FAILED_PACKAGES="$FAILED_PACKAGES $target"
-            return
-        fi
-        
-        # Check for .deb files in current dir (where make_deb_pkgs generates them)
-        if ls *.deb 1> /dev/null 2>&1; then
-            echo "    Found .deb files in root."
-            
-            # Install if needed (libs for dependencies)
-            if [ "$type" == "Lib" ]; then
-                 echo "    Installing generated debs..."
-                 local packages=(./*.deb)
-                 apt-get install -y --no-install-recommends "${packages[@]}" || \
-                     echo "Warning: Installation failed"
-            fi
-            
-            # Move to collection dir
-            mv *.deb "$DEBS_DIR/"
-            BUILT_PACKAGES="$BUILT_PACKAGES $target"
-        elif [ -d "deb_$target" ] && ls "deb_$target"/*.deb 1> /dev/null 2>&1; then
-            # Fallback if they are inside deb_<target>
-            echo "    Found .deb files inside build dir."
-            if [ "$type" == "Lib" ]; then
-                local packages=("deb_$target"/*.deb)
-                apt-get install -y --no-install-recommends "${packages[@]}" || \
-                    echo "Warning: Installation failed"
-            fi
-            mv "deb_$target"/*.deb "$DEBS_DIR/"
-            BUILT_PACKAGES="$BUILT_PACKAGES $target"
-        else
-            echo "Warning: No .deb files found for $target"
-            FAILED_PACKAGES="$FAILED_PACKAGES $target(no-debs)"
-        fi
-    else
-        echo "Warning: Directory $target not found."
-    fi
+record_failure() {
+    FAILED_PACKAGES="$FAILED_PACKAGES $1"
+    echo "::error::Package build failed: $1"
 }
 
-echo "Building libraries..."
-for lib in $LIBS; do
-    build_and_collect "$lib" "Lib"
-done
+build_and_collect() {
+    local target="$1" type="$2"
+    if [[ ! -f "debian/$target/rules" ]]; then
+        SKIPPED_PACKAGES="$SKIPPED_PACKAGES $target(no-upstream-packaging)"
+        return
+    fi
+    # Upstream supplies only amd64/armhf Ricoh binaries and excludes its SDK
+    # from the ARM64 Pentax driver. Do not mislabel a 32-bit binary as ARM64.
+    if [[ "$target" == libricohcamerasdk && "$DEB_ARCH" == arm64 ]]; then
+        SKIPPED_PACKAGES="$SKIPPED_PACKAGES $target(no-arm64-sdk)"
+        return
+    fi
+    echo ">>> Building $type: $target..."
+    local pending=(./*.deb)
+    if (( ${#pending[@]} != 0 )); then
+        echo "Uncollected packages found before building $target" >&2
+        exit 1
+    fi
+    if ! ./make_deb_pkgs "$target"; then
+        record_failure "$target"
+        # Quarantine partial output so it cannot be attributed to the next
+        # successful target or published in the release.
+        local partial=(./*.deb "deb_$target"/*.deb)
+        if (( ${#partial[@]} )); then
+            mkdir -p "$REPO_ROOT/failed_debs/$target"
+            mv "${partial[@]}" "$REPO_ROOT/failed_debs/$target/"
+        fi
+        return
+    fi
+    local packages=(./*.deb "deb_$target"/*.deb)
+    if (( ${#packages[@]} == 0 )); then
+        record_failure "$target(no-debs)"
+        return
+    fi
+    if [[ "$type" == Lib ]]; then
+        if ! apt-get install -y --no-install-recommends "${packages[@]}"; then
+            record_failure "$target(install)"
+        fi
+    fi
+    mv "${packages[@]}" "$DEBS_DIR/"
+    BUILT_PACKAGES="$BUILT_PACKAGES $target"
+}
 
-echo "Building drivers..."
-for drv in $DRIVERS; do
-    build_and_collect "$drv" "Driver"
-done
+for lib in $LIBS; do build_and_collect "$lib" Lib; done
+for drv in $DRIVERS; do build_and_collect "$drv" Driver; done
 
-echo "========================================"
-echo "Copying all .deb to repository..."
-# Check if there are any debs to copy
-if ls "$DEBS_DIR"/*.deb 1> /dev/null 2>&1; then
-    cp "$DEBS_DIR"/*.deb "$REPO_DIR/"
-    echo "Total debs: $(ls -1 "$REPO_DIR"/*.deb | wc -l)"
-
-    echo "Generating repo index..."
-    cd "$REPO_DIR"
-    dpkg-scanpackages . /dev/null | gzip -9c > Packages.gz
-else
-    echo "No .deb files found to process."
-fi
-
-echo "========================================"
-echo "Build Complete with issues."
-if [ -n "$FAILED_PACKAGES" ]; then
-    echo "Failed Packages:"
-    echo "$FAILED_PACKAGES"
-else
-    echo "All packages built successfully."
-fi
-echo "Files are in $REPO_DIR"
-
-# Preserve the existing partial-build policy, but expose omissions in Actions.
 {
     echo "Built targets:$BUILT_PACKAGES"
     echo "Failed targets:$FAILED_PACKAGES"
-    echo "Targets without upstream Debian packaging:$SKIPPED_PACKAGES"
+    echo "Unsupported or unpackaged targets:$SKIPPED_PACKAGES"
 } > "$REPO_ROOT/build-report.txt"
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     cat "$REPO_ROOT/build-report.txt" >> "$GITHUB_STEP_SUMMARY"
 fi
-if [ -n "$FAILED_PACKAGES" ]; then
-    echo "::warning::Some INDI packages failed to build:$FAILED_PACKAGES"
+cat "$REPO_ROOT/build-report.txt"
+if [[ -n "$FAILED_PACKAGES" ]]; then
+    echo "::error::Refusing to publish an incomplete package build."
+    exit 1
 fi
+packages=("$DEBS_DIR"/*.deb)
+if (( ${#packages[@]} == 0 )); then
+    echo "No Debian packages were generated." >&2
+    exit 1
+fi
+cp "${packages[@]}" "$REPO_DIR/"
+(cd "$REPO_DIR" && dpkg-scanpackages . /dev/null | gzip -9c > Packages.gz)
