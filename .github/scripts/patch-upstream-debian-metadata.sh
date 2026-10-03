@@ -52,4 +52,13 @@ if [[ -f "$debian_root/indi-avalonud/control" ]]; then
     "$debian_root/indi-avalonud/control"
 fi
 
+# Upstream ships some rules files without execute permission, but make_deb_pkgs
+# invokes them directly through fakeroot.
+find "$debian_root" -type f -name rules -exec chmod +x {} +
+
+# Firmware now installs below /usr on merged-/usr Debian systems.
+if [[ -f "$debian_root/libfishcamp/libfishcamp.install" ]]; then
+  sed -i 's|^lib/firmware/|usr/lib/firmware/|' "$debian_root/libfishcamp/libfishcamp.install"
+fi
+
 echo "Applied Debian Trixie metadata compatibility fixes."

@@ -57,6 +57,11 @@ Description: pigpio test package
 EOF
 done
 
+mkdir -p "$fixture/debian/libfishcamp" "$fixture/debian/indi-atik-efw"
+printf '%s\n' 'lib/firmware/gdr_usb.hex' 'usr/lib/*/libfishcamp.so.1' > "$fixture/debian/libfishcamp/libfishcamp.install"
+printf '%s\n' '#!/usr/bin/make -f' > "$fixture/debian/indi-atik-efw/rules"
+chmod 0644 "$fixture/debian/indi-atik-efw/rules"
+
 # Applying the compatibility patch twice must not duplicate relationships.
 "$script_dir/patch-upstream-debian-metadata.sh" "$fixture"
 "$script_dir/patch-upstream-debian-metadata.sh" "$fixture"
@@ -86,5 +91,12 @@ if ! grep -Fq 'Depends: indi-avalonud (= ${binary:Version}), ${misc:Depends}' \
   echo "indi-avalonud debug dependency was not corrected" >&2
   exit 1
 fi
+
+[[ -x "$fixture/debian/indi-atik-efw/rules" ]] || {
+  echo "Upstream Debian rules remain non-executable" >&2
+  exit 1
+}
+grep -Fxq 'usr/lib/firmware/gdr_usb.hex' "$fixture/debian/libfishcamp/libfishcamp.install"
+grep -Fxq 'usr/lib/*/libfishcamp.so.1' "$fixture/debian/libfishcamp/libfishcamp.install"
 
 echo "Upstream Debian metadata patch tests passed."

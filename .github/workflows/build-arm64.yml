@@ -8,8 +8,8 @@ permissions:
 
 env:
   DEBIAN_FRONTEND: noninteractive
-  INDI_3RDPARTY_VERSION: 2.2.3.1
-  INDI_CORE_VERSION: 2.2.3.1
+  INDI_3RDPARTY_VERSION: 2.2.5
+  INDI_CORE_VERSION: 2.2.5
   INDI_CORE_STAGE: /tmp/indi-core-stage
 
 jobs:
@@ -115,7 +115,16 @@ jobs:
             libgtest-dev \
             libgmock-dev \
             zlib1g-dev \
-            nlohmann-json3-dev
+            nlohmann-json3-dev \
+            libxisf-dev \
+            libtheora-dev \
+            systemd-dev \
+            qtbase5-dev \
+            libglib2.0-dev \
+            libaravis-dev \
+            libcamera-dev \
+            libnutclient-dev \
+            libmosquitto-dev
 
       - name: Test Debian package dependency helpers
         run: |
@@ -243,6 +252,14 @@ jobs:
         run: |
           set -euo pipefail
           ./build_debs.sh
+
+      - name: Upload package build report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: indi-3rdparty-build-report
+          path: indi-source/build-report.txt
+          if-no-files-found: warn
 
       - name: Generate and validate runtime dependencies
         run: |
@@ -406,7 +423,7 @@ jobs:
           path: indi-source/dist/*.deb
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release_meta.outputs.tag }}
           name: ${{ steps.release_meta.outputs.name }}

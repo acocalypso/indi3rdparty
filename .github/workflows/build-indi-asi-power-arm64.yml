@@ -6,11 +6,11 @@ on:
       indi_3rdparty_version:
         description: INDI 3rdparty version tag (without leading v)
         required: false
-        default: "2.1.9"
+        default: "2.2.5"
       indi_core_version:
         description: INDI core version tag (without leading v)
         required: false
-        default: "2.1.9"
+        default: "2.2.5"
 
 env:
   DEBIAN_FRONTEND: noninteractive
@@ -28,8 +28,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "INDI_3RDPARTY_VERSION=${{ github.event.inputs.indi_3rdparty_version || '2.1.9' }}" >> "$GITHUB_ENV"
-          echo "INDI_CORE_VERSION=${{ github.event.inputs.indi_core_version || '2.1.9' }}" >> "$GITHUB_ENV"
+          echo "INDI_3RDPARTY_VERSION=${{ github.event.inputs.indi_3rdparty_version || '2.2.5' }}" >> "$GITHUB_ENV"
+          echo "INDI_CORE_VERSION=${{ github.event.inputs.indi_core_version || '2.2.5' }}" >> "$GITHUB_ENV"
 
       - name: Install build prerequisites
         shell: bash

@@ -10,6 +10,8 @@ DEBS_DIR="${REPO_ROOT}/all_debs"
 mkdir -p "$REPO_DIR" "$DEBS_DIR"
 
 FAILED_PACKAGES=""
+BUILT_PACKAGES=""
+SKIPPED_PACKAGES=""
 
 # Ensure warnings are not promoted to errors in downstream builds.
 export CFLAGS="${CFLAGS:-} -Wno-error"
@@ -32,7 +34,7 @@ if ! command -v dpkg-scanpackages &> /dev/null; then
 fi
 
 # Define libs first (dependency order matters)
-LIBS="libasi libapogee libartocad libbig5 libcdcl libdcdcam libdfish libdmk libdsi libeg libep libfli libflycapture libfocuslight libftdi libgen_tcp libgphoto libgreychen libguider libioptron libmallincam libplayerone libqhy libqsi librtk libsbig libsexasdome libshelyak libsidereal libsiril libskywatcher libstarvigil libsvbony libsvbonycam libswab libsynscan libtic libtoupcam libunifiedtelemetry libvaonis libvedet libzwo libaltaircam libastroasis libatik libbressercam libfishcamp libinovasdk libmeadecam libmicam libnncam libogmacam libomegonprocam libpigpiod libpktriggercord libricohcamerasdk libstarshootg libtscam"
+LIBS=$(find . -maxdepth 1 -type d -name 'lib*' | sed 's|./||' | sort)
 # LIBS="libasi"
 
 # Find all indi-* drivers, excluding existing build dirs
@@ -49,6 +51,12 @@ build_and_collect() {
     local target=$1
     local type=$2
     
+    if [ ! -f "debian/$target/rules" ]; then
+        echo "Skipping $target: upstream does not provide Debian packaging."
+        SKIPPED_PACKAGES="$SKIPPED_PACKAGES $target"
+        return
+    fi
+
     if [ -d "$target" ]; then
         echo ">>> Building $type: $target..."
         
@@ -78,6 +86,7 @@ build_and_collect() {
             
             # Move to collection dir
             mv *.deb "$DEBS_DIR/"
+            BUILT_PACKAGES="$BUILT_PACKAGES $target"
         elif [ -d "deb_$target" ] && ls "deb_$target"/*.deb 1> /dev/null 2>&1; then
             # Fallback if they are inside deb_<target>
             echo "    Found .deb files inside build dir."
@@ -87,6 +96,7 @@ build_and_collect() {
                     echo "Warning: Installation failed"
             fi
             mv "deb_$target"/*.deb "$DEBS_DIR/"
+            BUILT_PACKAGES="$BUILT_PACKAGES $target"
         else
             echo "Warning: No .deb files found for $target"
             FAILED_PACKAGES="$FAILED_PACKAGES $target(no-debs)"
@@ -129,3 +139,16 @@ else
     echo "All packages built successfully."
 fi
 echo "Files are in $REPO_DIR"
+
+# Preserve the existing partial-build policy, but expose omissions in Actions.
+{
+    echo "Built targets:$BUILT_PACKAGES"
+    echo "Failed targets:$FAILED_PACKAGES"
+    echo "Targets without upstream Debian packaging:$SKIPPED_PACKAGES"
+} > "$REPO_ROOT/build-report.txt"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    cat "$REPO_ROOT/build-report.txt" >> "$GITHUB_STEP_SUMMARY"
+fi
+if [ -n "$FAILED_PACKAGES" ]; then
+    echo "::warning::Some INDI packages failed to build:$FAILED_PACKAGES"
+fi

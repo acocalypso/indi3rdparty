@@ -7,30 +7,39 @@ This repository contains a GitHub Actions workflow to auto-build INDI 3rd party 
 The workflow is defined in `.github/workflows/build-arm64.yml`.
 
 ### Triggers
-- Pushes to `main`
-- Pull Requests
 - Manual dispatch (`workflow_dispatch`)
 
 ### Build Environment
-- **OS**: Ubuntu Latest (Runner)
-- **Container**: `debian:trixie` (ARM64 via QEMU)
+- **OS**: Ubuntu 24.04 ARM64 (native runner)
+- **Container**: `debian:trixie` (native ARM64)
 - **Architecture**: ARM64
 
 ### Artifacts
 The workflow produces:
 - A directory containing all built `.deb` files.
-- A `Packages.gz` and `Release` file, making it a valid apt repository.
-- A GitHub Release (tag `arm64-build`) with all debs attached.
+- A build report listing built, failed, and unpackaged upstream targets.
+- A GitHub Release (tag `indi3rdparty-v2.2.5-<run-number>`) with all debs attached.
 
 ## Build Script
 
 The build logic is encapsulated in `build_debs.sh`. It:
 1.  Installs necessary build dependencies.
-2.  Iterates through a predefined list of libraries (`LIBS`).
+2.  Iterates through a discovered `lib*` library directories.
 3.  Iterates through all `indi-*` drivers.
 4.  Uses `make_deb_pkgs` to build each package.
 5.  Collects artifacts into a repository structure.
 6.  Generates `Packages.gz` for apt consumption.
+
+## Versions and partial builds
+
+Both workflows default to upstream INDI core and 3rdparty v2.2.5. The single
+`indi-asi-power` workflow also accepts explicit version overrides.
+
+The full build continues after individual package failures. A green run can
+therefore contain a partial package set. Check the Actions summary and the
+`indi-3rdparty-build-report` artifact for omissions. Directories without upstream
+Debian rules are skipped explicitly. Libraries requiring external SDKs may still
+need additional prerequisites.
 
 ## Usage
 
