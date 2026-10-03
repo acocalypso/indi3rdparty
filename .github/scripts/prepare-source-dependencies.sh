@@ -26,6 +26,7 @@ cp "$source_root/libahp-xc/LICENSE.md" "$source_root/debian/libahp-xc/copyright"
 fetch_source https://github.com/knro/libbno08x.git \
   2f8d6fc70a7f3fb224a46675c7bb9aecae046459 libbno08x
 cp -a "$source_root/libbno08x/debian" "$source_root/debian/libbno08x"
+cp "$source_root/libbno08x/license.txt" "$source_root/debian/libbno08x/copyright"
 # make_deb_pkgs overlays the INDI CMake modules onto each copied source tree.
 # Keep BNO08x's version-aware discovery so Trixie's libgpiod v2 API is selected.
 cp "$source_root/libbno08x/cmake_modules/FindGPIOD.cmake" "$source_root/cmake_modules/FindGPIOD.cmake"
@@ -36,6 +37,8 @@ echo 'usr/share/pkgconfig/' >> "$source_root/debian/libbno08x/libbno08x-dev.inst
 
 fetch_source https://github.com/raspberrypi/rpicam-apps.git \
   eb293b0552484c35dbddf7788badf42c709a4783 librpicam-app
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+python3 "$script_dir/patch-rpicam-libcamera.py" "$source_root/librpicam-app"
 # Build against Debian's libcamera without Raspberry Pi-only control extensions.
 # The INDI driver uses the library; command-line applications are unnecessary.
 sed -i "/^subdir('apps')$/d; /^subdir('utils')$/d" "$source_root/librpicam-app/meson.build"

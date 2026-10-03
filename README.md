@@ -43,7 +43,8 @@ The installability check also blocks publication on failure.
 AHP XC 1.4.7, BNO08x and rpicam-apps 1.8.1 sources are pinned by commit in
 `.github/scripts/prepare-source-dependencies.sh` and packaged alongside the
 INDI drivers. rpicam-apps builds against Debian's libcamera with Raspberry
-Pi-specific extensions disabled. Toupcam builds before MeadeCam, whose SDK
+Pi-specific extensions disabled. A compiler probe adapts newer exposure controls
+to the API available in Debian libcamera. Toupcam builds before MeadeCam, whose SDK
 depends on it.
 
 Ricoh's bundled proprietary SDK supports amd64 and armhf only. It is explicitly
